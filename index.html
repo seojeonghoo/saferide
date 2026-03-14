@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SafeRide - 안전한 라이딩을 위한 스마트 맵</title>
+    <link rel="stylesheet" href="css\style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="icon" href="images/logo.png" type="image/png">
+    <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=83e0cc3c67bac149012ace8d2f27ce9e"></script>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <h1 class="app-title">SafeRide</h1>
+        <p class="subtitle">안전한 라이딩을 위한 스마트 맵</p>
+        <div class="connection-status">
+            <div class="status-dot"></div>
+            <span class="status-text">연결됨</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main>
+        <div id="map"></div>
+
+        <!-- Emergency Button -->
+        <button class="emergency-btn" id="emergencyBtn">
+            <span>SOS</span>
+        </button>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <span class="time">9:41</span>
+            <span class="app-name">SafeRide</span>
+            <span class="battery">100%</span>
+        </div>
+
+        <!-- Map Page Content (placeholder) -->
+        <div class="page" id="mapPage">
+            <!-- Emergency Button was here -->
+        </div>
+
+        <!-- Stats Page -->
+        <div class="page" id="statsPage">
+            <h2>통계</h2>
+            <div class="empty-stats" id="emptyStats">
+                <img src="images/bike-icon.svg" alt="자전거">
+                <h3>아직 주행 기록이 없습니다</h3>
+                <p>주행을 시작하고 안전한 라이딩을 기록해보세요!</p>
+                <button class="start-ride-btn" onclick="app.startNewRide()">
+                    <i class="fas fa-play"></i> 주행 시작하기
+                </button>
+            </div>
+            <div class="stats-container" id="statsContainer" style="display: none;">
+                <div class="stat-card stat-card--big">
+                    <h3>안전 점수</h3>
+                    <p id="statsScoreBig">100점</p>
+                </div>
+                <div class="stat-row">
+                    <div class="stat-card">
+                        <h3>위험 감지</h3>
+                        <p id="statsHazards">0회</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>주행 시간</h3>
+                        <p id="statsTime">0분</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Add New Ride Button -->
+            <button class="new-ride-btn" onclick="app.clearRideHistory()">
+                <i class="fas fa-redo"></i>
+                기록 초기화
+            </button>
+        </div>
+
+        <!-- Active Ride Panel -->
+        <div class="active-ride-panel" id="activeRidePanel">
+            <div class="ride-stats">
+                <div class="ride-stat-item">
+                    <h4>주행 시간</h4>
+                    <p id="rideTime">00:00</p>
+                </div>
+                <div class="ride-stat-item">
+                    <h4>위험 감지</h4>
+                    <p id="hazardCount">0회</p>
+                </div>
+            </div>
+            <div class="ride-controls">
+                <button class="ride-control-btn pause" onclick="app.toggleRidePause()">
+                    <i class="fas fa-pause"></i> 일시정지
+                </button>
+                <button class="ride-control-btn stop" onclick="app.stopRide()">
+                    <i class="fas fa-stop"></i> 종료
+                </button>
+            </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div class="page" id="settingsPage">
+            <h2>설정</h2>
+            <div class="settings-list">
+                <div class="setting-item" data-setting="notifications">
+                    <span>알림 설정</span>
+                    <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="setting-item" data-setting="sound">
+                    <span>소리 설정</span>
+                    <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item" data-setting="darkMode">
+                    <span>다크 모드</span>
+                    <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alert Panel -->
+        <div class="alert-panel">
+            <div class="alert-header">
+                <div class="alert-header-title">
+                    <h3>실시간 위험 감지</h3>
+                    <div class="alert-count">
+                        <span id="alertCount">4</span>
+                    </div>
+                </div>
+                <button id="clearAlerts" class="clear-alerts-btn">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+            
+            <div class="alert-list" id="alertList">
+                <!-- Alert items will be dynamically added here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" data-page="home">
+            <i class="fas fa-home"></i> 
+            <span>홈</span>
+        </div>
+        <div class="nav-item" data-page="map">
+            <i class="fas fa-map"></i>
+            <span>지도</span>
+        </div>
+        <div class="nav-item" data-page="stats">
+            <i class="fas fa-chart-bar"></i>
+            <span>통계</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+            <i class="fas fa-cog"></i>
+            <span>설정</span>
+        </div>
+    </nav>
+
+    <!-- Emergency Modal -->
+    <div class="emergency-modal" id="emergencyModal">
+        <div class="modal-content">
+            <h2>🚨 비상 상황</h2>
+            <p>비상 버튼이 눌렸습니다!</p>
+            <div class="emergency-actions">
+                <button class="btn-primary" onclick="callEmergency()">
+                    <i class="fas fa-phone"></i>
+                    긴급 전화
+                </button>
+                <button class="btn-secondary" onclick="closeEmergency()">
+                    취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast" id="toast">
+        <div class="toast-content">
+            <i class="toast-icon"></i>
+            <span class="toast-message"></span>
+        </div>
+    </div>
+
+    <script src="js\script.js"></script>
+</body>
+</html>

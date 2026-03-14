@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Kakao 지도 - 최종 버전 (레벨 1, 지연 이동, 지도 회전)</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <style>
+        /* 지도를 담을 영역의 크기를 지정합니다. */
+        #map { width: 100%; height: 100vh; margin: 0; padding: 0; }
+        body { margin: 0; padding: 0; overflow: hidden; }
+        
+        /* 현 위치 버튼 스타일 */
+        .custom_controls { position: absolute; top: 20px; right: 10px; z-index: 10; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+        .custom_controls button { display: block; width: 36px; height: 36px; margin: 0; padding: 0; border: 1px solid #ccc; background-color: #fff; cursor: pointer; line-height: 36px; text-align: center; font-size: 20px; color: #333; border-radius: 5px; }
+        .location_icon::after { content: "\2316"; } 
+        
+        /* 지도 타입 버튼 스타일 */
+        .map_type_controls { position: absolute; top: 70px; right: 10px; z-index: 10; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); border-radius: 5px; }
+        .map_type_controls button { display: block; width: 36px; height: 36px; margin: 0; padding: 0; border: 1px solid #ccc; background-color: #fff; cursor: pointer; line-height: 36px; text-align: center; font-size: 10px; font-weight: bold; color: #333; }
+        .map_type_controls button.selected { background-color: #eee; }
+        .map_type_controls button:not(:last-child) { border-bottom: none; }
+
+        /* ********************************************** */
+        /* 내가 보는 방향 표시를 위한 커스텀 마커 스타일 */
+        /* ********************************************** */
+        .heading_marker {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%; /* 원형 */
+            background-color: rgba(66, 133, 244, 0.7); /* 파란색 원 */
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+            position: absolute;
+        }
+        .heading_marker::after {
+            /* 방향을 나타내는 작은 흰색 화살표 */
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%); 
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 8px solid white; 
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div class="custom_controls">
+        <button id="currentLocationBtn" class="location_icon" title="현재 위치로 이동 및 크기 초기화"></button>
+    </div>
+    
+    <div class="map_type_controls">
+        <button id="btnNormal" class="selected" title="일반 지도">일반</button>
+        <button id="btnHybrid" title="하이브리드 뷰">하이브리드</button>
+        <button id="btnTraffic" title="교통 정보">교통</button>
+    </div>
+
+    <script type="text/javascript" 
+            src="//dapi.kakao.com/v2/maps/sdk.js?appkey=83e0cc3c67bac149012ace8d2f27ce9e"></script>
+
+    <script>
+        var container = document.getElementById('map');
+        var map = null;
+        var customOverlay = null; 
+        var currentLocation = null; 
+        var recenterTimerId = null; // ⭐ [추가] 지연 이동을 위한 타이머 ID
+
+        var initialLevel = 1; // ⭐ [수정] 지도 레벨을 1로 고정
+        var defaultCenter = new kakao.maps.LatLng(37.566826, 126.9786567);
+        var options = {
+            center: defaultCenter, 
+            level: initialLevel 
+        };
+        
+        // 1. 페이지 로드 시 즉시 지도를 생성하여 화면에 표시합니다.
+        map = new kakao.maps.Map(container, options);
+        
+        var content = document.createElement('div');
+        content.className = 'heading_marker';
+
+        // 2. 지도가 로드되자마자 기본 위치에 마커(Custom Overlay)를 먼저 생성합니다.
+        customOverlay = new kakao.maps.CustomOverlay({
+            map: map,
+            position: defaultCenter,
+            content: content,
+            yAnchor: 0.5, 
+            xAnchor: 0.5
+        });
+
+        // ----------------------------------------------------
+        // ⭐ 3. 지연 이동을 위한 핵심 기능
+        // ----------------------------------------------------
+        
+        // 현재 위치로 이동 및 회전을 적용하는 함수
+        function recenterMap() {
+             if (currentLocation) {
+                map.setCenter(currentLocation);
+                // 지도 회전은 deviceorientation 이벤트에서 계속 업데이트됩니다.
+            }
+        }
+        
+        // 사용자가 드래그를 시작하면 지연 타이머를 취소합니다.
+        kakao.maps.event.addListener(map, 'dragstart', function() {
+            if (recenterTimerId !== null) {
+                clearTimeout(recenterTimerId);
+                recenterTimerId = null;
+                console.log('Drag started. Recenter timer cleared.');
+            }
+        });
+
+        // 사용자가 드래그를 멈추면 1초 후 자기 위치로 돌아가도록 예약합니다.
+        kakao.maps.event.addListener(map, 'dragend', function() {
+            if (currentLocation) { 
+                console.log('Drag ended. Scheduling recenter in 1 second.');
+                recenterTimerId = setTimeout(function() {
+                    recenterMap();
+                    recenterTimerId = null;
+                }, 1000); // 1000ms = 1초
+            }
+        });
+
+
+        // ----------------------------------------------------
+        // 4. 지도 타입 변경 기능 (이전과 동일)
+        // ----------------------------------------------------
+        var mapTypeControl = document.querySelector('.map_type_controls');
+        
+        mapTypeControl.addEventListener('click', function(e) {
+            var target = e.target;
+            if (target.tagName !== 'BUTTON') return;
+
+            Array.from(mapTypeControl.children).forEach(btn => btn.classList.remove('selected'));
+            target.classList.add('selected');
+
+            map.removeOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
+            
+            var mapType;
+            if (target.id === 'btnNormal') {
+                mapType = kakao.maps.MapTypeId.NORMAL;
+            } else if (target.id === 'btnHybrid') {
+                mapType = kakao.maps.MapTypeId.HYBRID;
+            } else if (target.id === 'btnTraffic') {
+                mapType = kakao.maps.MapTypeId.NORMAL; 
+                map.addOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
+            }
+            
+            if (target.id !== 'btnTraffic') {
+                map.setMapTypeId(mapType);
+            } else {
+                map.setMapTypeId(kakao.maps.MapTypeId.NORMAL); 
+            }
+        });
+
+
+        // ----------------------------------------------------
+        // 5. 현 위치 버튼 클릭 이벤트 설정
+        // ----------------------------------------------------
+        document.getElementById('currentLocationBtn').addEventListener('click', function() {
+            // 버튼 클릭 시 즉시 중앙 이동 및 회전 초기화
+            if (currentLocation) {
+                map.setCenter(currentLocation);
+                map.setLevel(initialLevel); 
+                map.setRotation(0); 
+            } else {
+                alert('위치 정보를 가져오는 중이거나 실패했습니다.');
+            }
+        });
+        
+        // ----------------------------------------------------
+        // 6. Geolocation API를 사용하여 현재 위치를 추적합니다.
+        // ----------------------------------------------------
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(onSuccess, onError, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 5000
+            });
+        }
+        
+        // ----------------------------------------------------
+        // 7. Device Orientation API를 사용하여 방향을 추적합니다.
+        // ----------------------------------------------------
+        if (window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientationabsolute', onDeviceOrientation, false);
+        }
+
+        // ----------------------------------------------------
+        // 8. 위치 추적 성공 시 실행되는 함수 (위치 업데이트)
+        // ----------------------------------------------------
+        function onSuccess(position) {
+            var lat = position.coords.latitude;
+            var lon = position.coords.longitude;
+            var locPosition = new kakao.maps.LatLng(lat, lon);
+            currentLocation = locPosition; 
+            
+            // 마커 위치만 업데이트합니다. (지도 중심은 드래그 이벤트가 없을 때만 이동합니다.)
+            customOverlay.setPosition(locPosition);
+            
+            // ⭐ [수정] 지도 드래그 중이 아닐 때만 초기 위치 설정
+            if (recenterTimerId === null) {
+                map.setCenter(locPosition);
+            }
+        }
+        
+        // ----------------------------------------------------
+        // 9. 장치 방향 감지 시 실행되는 함수 (지도 회전)
+        // ----------------------------------------------------
+        function onDeviceOrientation(event) {
+            if (map && event.absolute) {
+                var heading = event.alpha; 
+                map.setRotation(-heading); 
+            }
+        }
+        
+        // ----------------------------------------------------
+        // 10. 위치 추적 실패 시 실행되는 함수
+        // ----------------------------------------------------
+        function onError(error) {
+            // (에러 처리 로직)
+        }
+    </script>
+</body>
+</html>
